@@ -1,6 +1,6 @@
-### snowSimulator
+## snowSimulator
 
-## How To Run The Simulation
+### How To Run The simulator
 
 1. **Clone the application**
 
