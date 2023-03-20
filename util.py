@@ -691,3 +691,18 @@ def conversionOfCompositeSignal(compositeSignal):
             convertedSignal.append(1)
     print("Composite Signal After Conversion: ", list(convertedSignal))
     return convertedSignal
+
+def getCarrierFrequencyList2(numberOfCarriers):
+    global numberOfCarriersUtil
+    numberOfCarriersUtil = numberOfCarriers
+    carrierFrequencyList = []
+
+    startFrequency = 1
+    spacing = 1
+
+    for i in range(numberOfCarriers):
+        frequency = startFrequency + spacing * (i+1)
+        # frequency = startFrequency + 10000000 * (i + 1) + bandWidth * (i + 1)
+        carrierFrequencyList.append(frequency)
+
+    return carrierFrequencyList
