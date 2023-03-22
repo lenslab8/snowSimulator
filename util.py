@@ -37,6 +37,7 @@ bitError = []
 numberOfCarriersUtil = 1
 isNoiseAdded = False
 
+
 def calculateNoiseBasedOnSNR(SNRdb, size):
     signalPower = 1
     sigma2 = signalPower * 10 ** (-SNRdb / 10)  # calculate noise power based on signal power and SNR
@@ -50,8 +51,8 @@ def calculateNoiseBasedOnSNR(SNRdb, size):
 # noise = np.random.normal(0, 0.001, 2240)
 # noise = np.random.normal(0, 0.01, 2240)
 # snr = 5, 10, 15, 20, 25
-#noise = calculateNoiseBasedOnSNR(10, 2240)
-#noise = calculateNoiseBasedOnSNR(25, 2240)
+# noise = calculateNoiseBasedOnSNR(10, 2240)
+# noise = calculateNoiseBasedOnSNR(25, 2240)
 noise = calculateNoiseBasedOnSNR(6, 2240)
 
 
@@ -74,9 +75,9 @@ def buildUserData(data, codelength):
     data = data
     data = np.array(bitfield(data))
     data_len = len(data)
-    #print('data before repeat: ', data)
+    # print('data before repeat: ', data)
     data = np.repeat(data, codelength)
-    #print('data after repeat: ', data)
+    # print('data after repeat: ', data)
     return (data, data_len)
 
 
@@ -101,7 +102,7 @@ def spreadUserDataWithCarrier(data, data_len, goldCode, fc, fs):
 
 
 def spreadUserDataWithCarrierBitWise(data, data_len, goldCode, fc, fs):
-    #print('code in spreading : ', goldCode)
+    # print('code in spreading : ', goldCode)
     data_code = []
     for i in range(data_len):
         data_code = np.append(data_code, goldCode)
@@ -112,7 +113,7 @@ def spreadUserDataWithCarrierBitWise(data, data_len, goldCode, fc, fs):
 
     # data_spread = applyCarrier(data_spread * 2 - 1, fc, fs)
 
-    #bipolarSpreadData = data_spread * 2 - 1
+    # bipolarSpreadData = data_spread * 2 - 1
     bipolarSpreadData = data_spread
     global sumSpreadData
     global printCounter
@@ -135,6 +136,18 @@ def despread(composite, code, codelength):
         recovered = np.append(recovered, getDspreadBit(
             1.0 * sum(despread[i * codelength:i * codelength + codelength]) / codelength))
     # recovered = np.repeat(recovered, codelength)
+    return recovered
+
+
+def despreadXOR(composite, code, codelength):
+    l = int(len(composite) / codelength)
+    # code = [1 if bit==0 else 0 for bit in code]
+
+    despread = np.logical_xor(composite, code).astype(int)
+    recovered = []
+    for i in range(l):
+        recovered = np.append(recovered, getDspreadBitAfterXOR(
+            1.0 * sum(despread[i * codelength:i * codelength + codelength])))
     return recovered
 
 
@@ -185,7 +198,7 @@ def applyCarrieBitWise(data, fc, fs):
         # else:
         #     modData = np.multiply(data[i], carrier)
         modData = np.multiply(data[i], carrier)
-        #plotBitWiseCarrier(modData, t)
+        # plotBitWiseCarrier(modData, t)
         # noise will add across only one time (not with every node)
         bitWiseCarrier.append(modData)
     isNoiseAdded = True
@@ -197,7 +210,7 @@ def buildCompositeSignal(signals, fc):
     for i in range(fftSize):
         sum = 0
         for signal in signals:
-            #print(signal[i])
+            # print(signal[i])
             sum = sum + signal[i]
         # compositeSignal.append(sum)
 
@@ -209,6 +222,24 @@ def buildCompositeSignal(signals, fc):
         compositeSignal.append((sum, fc))
 
     return compositeSignal
+
+
+def mergeSignalsOfSubcarrier(signals):
+    # compositeSignal = np.zeros(len(signals[0]))
+    compositeSignalList = []
+    compositeSignal = np.zeros(len(signals[0][0]))
+    # for signal in signals:
+    #     compositeSignal = compositeSignal + signal
+    # compositeSignal = compositeSignal + noise
+
+    for i in range(len(signals[0])):
+        for signal in signals:
+            compositeSignal = compositeSignal+signal[i]
+        compositeSignalList.append(compositeSignal)
+
+    return compositeSignalList
+
+
 
 
 def applyfft(signal):
@@ -238,8 +269,6 @@ def applyfft(signal):
     # frequency = fRealized[int(magnitudeIndex)]
     frequency = signal[1]
 
-
-
     # plt.plot(fRealized, XmagRealized)
     # plt.show()
 
@@ -252,7 +281,6 @@ def applyfft(signal):
     magnitude = assignSign(phase, magnitude)
 
     return frequency, magnitude, phase
-
 
 
 def applyfftModified(signal, fs):
@@ -289,6 +317,20 @@ def applyfftModified(signal, fs):
 
     return frequency, magnitude, phase
 
+
+def fftRevised(signal, fs):
+    fourierTransform = np.fft.fft(signal) / len(signal)
+    fourierTransform = fourierTransform[range(int(len(signal) / 2))]  # Exclude sampling frequency
+    tpCount = len(signal)
+    values = np.arange(tpCount / 2)
+    # timePeriod = tpCount / fs
+    fr = fs / len(signal)
+    timePeriod = 1/fr
+    frequencies = values / timePeriod
+    plt.plot(frequencies, abs(fourierTransform))
+    print("Inside ffft")
+
+
 # node1 = 1, 1,1
 # node2 = 1, 1, 1
 # node3 = 1, 1, 1
@@ -320,6 +362,7 @@ def continuousFFT(signals):
         fftBinWithPhase[frequency] = phases
 
     return fftBinWithMag, fftBinWithPhase
+
 
 def continuousFFTModiFied(signals, fsList):
     fftBinWithMag = {}
@@ -442,15 +485,18 @@ def assignSign(phase, mag):
     elif phase == 1.0468607103122654 or phase == -1.0462625533981194 or round(phase, 2) == -1.05 or round(phase,
                                                                                                           2) == 1.05 \
             or phase == 2.6505698219095076e-11 or round(phase) == 0 or phase == 0 or float(
-        "{:.2f}".format(phase)) == 1.04 or float("{:.2f}".format(phase)) == -1.04 or float("{:.2f}".format(phase)) == -1.21\
-            or float("{:.2f}".format(phase)) == -0.98\
+        "{:.2f}".format(phase)) == 1.04 or float("{:.2f}".format(phase)) == -1.04 or float(
+        "{:.2f}".format(phase)) == -1.21 \
+            or float("{:.2f}".format(phase)) == -0.98 \
             or float("{:.2f}".format(phase)) == -1.13 or round(phase, 1) == -0.9:
         return mag
     elif phase == -2.094731943277528 or phase == 2.0953301001916738 or round(phase, 2) == -2.1 or round(phase, 2) == 2.1 \
             or phase == -3.1415926535632877 or float("{:.2f}".format(phase)) == -2.09 or float(
-        "{:.2f}".format(phase)) == 2.09 or float("{:.2f}".format(phase)) == -3.14 or float("{:.2f}".format(phase)) == 3.14 \
-            or float("{:.2f}".format(phase)) == 1.93 or float("{:.2f}".format(phase)) == -2.65 or float("{:.2f}".format(phase)) == -2.66\
-             or float("{:.2f}".format(phase)) == 2.17 or float("{:.2f}".format(phase)) == 2.01 or round(phase, 1) == 2.2:
+        "{:.2f}".format(phase)) == 2.09 or float("{:.2f}".format(phase)) == -3.14 or float(
+        "{:.2f}".format(phase)) == 3.14 \
+            or float("{:.2f}".format(phase)) == 1.93 or float("{:.2f}".format(phase)) == -2.65 or float(
+        "{:.2f}".format(phase)) == -2.66 \
+            or float("{:.2f}".format(phase)) == 2.17 or float("{:.2f}".format(phase)) == 2.01 or round(phase, 1) == 2.2:
         return -mag
     else:
         print(mag, phase)
@@ -485,9 +531,14 @@ def getDspreadBit(dataBit):
         return 1
 
 
+def getDspreadBitAfterXOR(dataBit):
+    if dataBit <= 3:
+        return 0
+    else:
+        return 1
+
+
 def getAccuracy(inputData, recoveredData):
-    print("input data:    ", list(inputData))
-    print("received data: ", list(recoveredData))
     errorBitCount = 0
     for i in range(len(inputData)):
         if inputData[i] != recoveredData[i]:
@@ -543,6 +594,7 @@ def getFrequencyMapping(fc):
 
     return f
 
+
 def getFrequencyMappingModified(fc, frequencies):
     startFrequency = 540000000
     bandWidth = 400000
@@ -550,7 +602,7 @@ def getFrequencyMappingModified(fc, frequencies):
     a = int(str(firstCarrierFrequency)[3:])
     b = int(str(fc)[3:])
 
-    res = b/a
+    res = b / a
     resCeil = math.ceil(res)
     diff = resCeil - res
     frequencyIndex = 0
@@ -561,12 +613,6 @@ def getFrequencyMappingModified(fc, frequencies):
 
     # return getCarrierFrequencyList(numberOfCarriersUtil)[frequencyIndex]
     return frequencies[frequencyIndex]
-
-
-
-
-
-
 
 
 def writeDataInfile(data, fileName):
@@ -605,7 +651,7 @@ def getMinimumBER():
 
 
 def getBinary40byteDataList(numberOfNodes):
-    #howManyData = 9
+    # howManyData = 9
     howManyData = numberOfNodes
     dataList = []
     # dataList.append(buildUserData(hex0, 7)[0])
@@ -632,17 +678,62 @@ def generateRandomBinaryNumber(size):
 
     return binaryNumber
 
+
 def buildSpreadDataForASubcarrier(dataList, codeList, carrierFrequency, fs):
     spreadedDataList = []
-    #print('code: ', codeList[0])
+    # print('code: ', codeList[0])
     for i in range(len(dataList)):
-        #print('data before repeat', i, ' ', dataList[i])
+        # print('data before repeat', i, ' ', dataList[i])
         repeatData = np.repeat(dataList[i], len(codeList[i]))
-        #print('data after repeat', i, ' ', list(repeatData))
-        spreadData = spreadUserDataWithCarrierBitWise(repeatData, len(dataList[i]), codeList[i], carrierFrequency, fs)[1]
+        # print('data after repeat', i, ' ', list(repeatData))
+        spreadData = spreadUserDataWithCarrierBitWise(repeatData, len(dataList[i]), codeList[i], carrierFrequency, fs)[
+            1]
         spreadedDataList.append(spreadData)
 
     return spreadedDataList
+
+
+def buildSpreadDataForSubcarrierRevised(dataList, codeList, carrierFrequency, fs):
+    spreadedDataList = []
+    for i in range(len(dataList)):
+        repeatData = np.repeat(dataList[i], len(codeList[i]))
+        spreadData = spreadUserDataWithCarrierBitWiseRevised(repeatData, len(dataList[i]), codeList[i], carrierFrequency, fs)[1]
+        spreadedDataList.append(spreadData)
+
+    return spreadedDataList
+
+
+def spreadUserDataWithCarrierBitWiseRevised(data, data_len, goldCode, fc, fs):
+    data_code = []
+    for i in range(data_len):
+        data_code = np.append(data_code, goldCode)
+
+    data_spread = np.logical_xor(data_code, data).astype(int)
+    # data_spread = (data * 2 - 1) * (data_code * -2.0 + 1)
+
+    # bipolarSpreadData = data_spread * 2 - 1
+    bipolarSpreadData = data_spread
+    global sumSpreadData
+    global printCounter
+    printCounter = printCounter + 1
+    sumSpreadData = sumSpreadData + bipolarSpreadData
+    print(sumSpreadData)
+    data_spread = applyCarrieBitWiseRevised(bipolarSpreadData, fc, fs)
+    return data_code, data_spread
+
+
+def applyCarrieBitWiseRevised(data, fc, fs):
+    samplingInterval = 1 / fs
+    beginTime = 0
+    endTime = samplingInterval * len(data) * 3 + beginTime
+    time = np.arange(beginTime, endTime, samplingInterval)
+    carrier = np.sin(2 * np.pi * fc * time)
+
+    bitWiseCarrier = []
+    for i in range(len(data)):
+        modData = np.multiply(data[i], carrier)
+        bitWiseCarrier.append(modData)
+    return bitWiseCarrier
 
 
 def getCarrierFrequencyList(numberOfCarriers):
@@ -654,16 +745,33 @@ def getCarrierFrequencyList(numberOfCarriers):
     bandWidth = 400000
 
     for i in range(numberOfCarriers):
-        frequency = startFrequency + bandWidth * (i+1)
+        frequency = startFrequency + bandWidth * (i + 1)
         # frequency = startFrequency + 10000000 * (i + 1) + bandWidth * (i + 1)
         carrierFrequencyList.append(frequency)
 
     return carrierFrequencyList
 
+
+def getCarrierFrequencyList2(numberOfCarriers):
+    global numberOfCarriersUtil
+    numberOfCarriersUtil = numberOfCarriers
+    carrierFrequencyList = []
+
+    startFrequency = 528
+    # spacing = 0.2
+    spacing = 2.6
+
+    for i in range(numberOfCarriers):
+        frequency = startFrequency + spacing * i
+        carrierFrequencyList.append(frequency)
+
+    return carrierFrequencyList
+
+
 def getSamplingFrequencyList(carrierFrequencyList):
     samplingFrequencyList = []
     for i in range(len(carrierFrequencyList)):
-        samplingFrequencyList.append((carrierFrequencyList[i]/2 + 1))
+        samplingFrequencyList.append((carrierFrequencyList[i] / 2 + 1))
 
     return samplingFrequencyList
 
@@ -673,6 +781,7 @@ def getDataCode(goldCode, dataLen):
     for i in range(dataLen):
         data_code = np.append(data_code, goldCode)
     return data_code
+
 
 def plotBitWiseCarrier(signal, t):
     plt.plot(t, signal)
@@ -691,18 +800,3 @@ def conversionOfCompositeSignal(compositeSignal):
             convertedSignal.append(1)
     print("Composite Signal After Conversion: ", list(convertedSignal))
     return convertedSignal
-
-def getCarrierFrequencyList2(numberOfCarriers):
-    global numberOfCarriersUtil
-    numberOfCarriersUtil = numberOfCarriers
-    carrierFrequencyList = []
-
-    startFrequency = 1
-    spacing = 1
-
-    for i in range(numberOfCarriers):
-        frequency = startFrequency + spacing * (i+1)
-        # frequency = startFrequency + 10000000 * (i + 1) + bandWidth * (i + 1)
-        carrierFrequencyList.append(frequency)
-
-    return carrierFrequencyList
