@@ -5,6 +5,8 @@ import pylab as plt
 from numpy import fft
 import gold
 import random
+from scipy import signal
+import snowAccuracy
 
 hex0 = 0xa5822141c362514af1cc9615604be1a726f7d455918b11fe3e2b340a8cde6a57c5f5c548e8c5bee0
 hex1 = 0xbada18590b6b9491b0f4e2d486657ff883feda11e6960bf2142ab85a246f65b7d7064baa949fad24
@@ -36,6 +38,8 @@ bitError = []
 
 numberOfCarriersUtil = 1
 isNoiseAdded = False
+centerFrequency = 530
+centerSignal = []
 
 
 def calculateNoiseBasedOnSNR(SNRdb, size):
@@ -233,13 +237,16 @@ def mergeSignalsOfSubcarrier(signals):
     # compositeSignal = compositeSignal + noise
 
     for i in range(len(signals[0])):
+        compositeSignal = np.zeros(len(signals[0][0]))
         for signal in signals:
-            compositeSignal = compositeSignal+signal[i]
+            compositeSignal = compositeSignal + signal[i]
         compositeSignalList.append(compositeSignal)
 
     return compositeSignalList
 
 
+def multiplyWithCenter(composite, centerSignal):
+    return np.multiply(composite, centerSignal)
 
 
 def applyfft(signal):
@@ -318,17 +325,39 @@ def applyfftModified(signal, fs):
     return frequency, magnitude, phase
 
 
-def fftRevised(signal, fs):
-    fourierTransform = np.fft.fft(signal) / len(signal)
-    fourierTransform = fourierTransform[range(int(len(signal) / 2))]  # Exclude sampling frequency
-    tpCount = len(signal)
-    values = np.arange(tpCount / 2)
-    # timePeriod = tpCount / fs
-    fr = fs / len(signal)
-    timePeriod = 1/fr
+def fftRevised(signal, fs, fftLength):
+    # fourierTransform = np.fft.fft(signal) / len(signal)
+    # fourierTransform = fourierTransform[range(int(len(signal) / 2))]  # Exclude sampling frequency
+    # tpCount = len(signal)
+    # values = np.arange(tpCount / 2)
+    # # timePeriod = tpCount / fs
+    # fr = fs / len(signal)
+    # timePeriod = 1 / fr
+    # frequencies = values / timePeriod
+    # plt.plot(frequencies, abs(fourierTransform))
+    # print("Inside ffft")
+
+    # fourierTransformEntire = np.fft.fft(signal, fftLength) / 320
+    fourierTransformEntire = np.fft.fft(signal, fftLength) / len(signal)
+    # fourierTransform = fourierTransformEntire
+    fourierTransform = fourierTransformEntire[range(int(len(fourierTransformEntire) / 2))]
+
+    # fourierTransform = np.fft.fft(signal, fftLength)
+    # tpCount = len(fourierTransform)
+    tpCount = len(fourierTransformEntire)
+
+    values = np.arange(int(tpCount / 2))
+    valuesAll = np.arange(int(tpCount))
+
+    # values = np.arange(int(tpCount))
+    timePeriod = tpCount / fs
     frequencies = values / timePeriod
-    plt.plot(frequencies, abs(fourierTransform))
-    print("Inside ffft")
+    frequenciesAll = valuesAll / timePeriod
+
+    # print(frequencies)
+    # print(abs(fourierTransform))
+    # plotFunc(frequencies, abs(fourierTransform))
+    return np.array(abs(fourierTransform))
 
 
 # node1 = 1, 1,1
@@ -697,7 +726,8 @@ def buildSpreadDataForSubcarrierRevised(dataList, codeList, carrierFrequency, fs
     spreadedDataList = []
     for i in range(len(dataList)):
         repeatData = np.repeat(dataList[i], len(codeList[i]))
-        spreadData = spreadUserDataWithCarrierBitWiseRevised(repeatData, len(dataList[i]), codeList[i], carrierFrequency, fs)[1]
+        spreadData = \
+            spreadUserDataWithCarrierBitWiseRevised(repeatData, len(dataList[i]), codeList[i], carrierFrequency, fs)[1]
         spreadedDataList.append(spreadData)
 
     return spreadedDataList
@@ -717,7 +747,8 @@ def spreadUserDataWithCarrierBitWiseRevised(data, data_len, goldCode, fc, fs):
     global printCounter
     printCounter = printCounter + 1
     sumSpreadData = sumSpreadData + bipolarSpreadData
-    print(sumSpreadData)
+    # print('data1: ', list(bipolarSpreadData))
+    # print("printCount: ", printCounter, ' ', list(sumSpreadData))
     data_spread = applyCarrieBitWiseRevised(bipolarSpreadData, fc, fs)
     return data_code, data_spread
 
@@ -725,9 +756,12 @@ def spreadUserDataWithCarrierBitWiseRevised(data, data_len, goldCode, fc, fs):
 def applyCarrieBitWiseRevised(data, fc, fs):
     samplingInterval = 1 / fs
     beginTime = 0
-    endTime = samplingInterval * len(data) * 3 + beginTime
+    # endTime = samplingInterval * len(data) * 3 + beginTime
+    endTime = samplingInterval * len(data) + beginTime
     time = np.arange(beginTime, endTime, samplingInterval)
-    carrier = np.sin(2 * np.pi * fc * time)
+    carrier = np.cos(2 * np.pi * fc * time)
+    global centerSignal
+    centerSignal = np.cos(2 * np.pi * centerFrequency * time)
 
     bitWiseCarrier = []
     for i in range(len(data)):
@@ -758,12 +792,30 @@ def getCarrierFrequencyList2(numberOfCarriers):
     carrierFrequencyList = []
 
     startFrequency = 528
-    # spacing = 0.2
-    spacing = 2.6
+    spacing = 0.2
+    # spacing = 2.6
 
     for i in range(numberOfCarriers):
         frequency = startFrequency + spacing * i
         carrierFrequencyList.append(frequency)
+
+    return carrierFrequencyList
+
+
+def getCarrierFrequencyListRevised(numberOfCarriers, startingFrequency, centerFrequency, spacing):
+    global numberOfCarriersUtil
+    numberOfCarriersUtil = numberOfCarriers
+    carrierFrequencyList = []
+
+    startFrequency = startingFrequency
+    spacing = spacing
+    # spacing = 2.6
+
+    # +1 due to not including the centerFrequency
+    for i in range(numberOfCarriers + 1):
+        frequency = startFrequency + spacing * i
+        if frequency != centerFrequency:
+            carrierFrequencyList.append(frequency)
 
     return carrierFrequencyList
 
@@ -800,3 +852,117 @@ def conversionOfCompositeSignal(compositeSignal):
             convertedSignal.append(1)
     print("Composite Signal After Conversion: ", list(convertedSignal))
     return convertedSignal
+
+
+def bandPassFilter(x, fs, low=524, high=536):
+    lowpass_frequency = low  # Hz
+    highpass_frequency = high  # Hz
+
+    b_band, a_band = signal.butter(N=4, Wn=(lowpass_frequency, highpass_frequency), btype="bandpass", fs=fs, )
+
+    sinbp = signal.filtfilt(b_band, a_band, x)
+    return sinbp
+
+
+def getSignal(fc, fs, length):
+    samplingInterval = 1 / fs
+    beginTime = 0
+    # endTime = samplingInterval * len(data) * 3 + beginTime
+    endTime = samplingInterval * length + beginTime
+    time = np.arange(beginTime, endTime, samplingInterval)
+    signal = np.cos(2 * np.pi * fc * time)
+    return signal
+
+
+def getCenterFrequencyIndex(centerFrequency, samplingFrequency, freqResolution):
+    freqDef = samplingFrequency / 2 - centerFrequency
+    freq = freqDef / freqResolution
+    # find the index of freq in frequency array
+    # or
+    freqIndex = math.floor(freq / freqResolution)
+    return freqIndex
+
+
+def findFindSubcarrierFrequencyIndex(subcarrierFrequency, centerFrequency, samplingFrequency, freqResolution):
+    centerFrequencyIndex = getCenterFrequencyIndex(centerFrequency, samplingFrequency, freqResolution)
+    freqDef = centerFrequency - subcarrierFrequency
+    freqAmount = freqDef / freqResolution
+    # find the index of freq in frequency array
+    # or
+    freqIndex = math.floor(centerFrequencyIndex + freqAmount)
+    return freqIndex
+
+
+def getSubcarriersFFTIndex(subcarrierFrequencyList, centerFrequency, samplingFrequency, freqResolution):
+    # subcarrierFFTIndex = []
+    subcarrierFFTIndexMapping = {}
+    for freq in subcarrierFrequencyList:
+        freqIndex = findFindSubcarrierFrequencyIndex(freq, centerFrequency, samplingFrequency, freqResolution)
+        # subcarrierFFTIndex.append(freqIndex)
+        subcarrierFFTIndexMapping[str(freq)] = freqIndex
+
+    # return subcarrierFFTIndex
+    return subcarrierFFTIndexMapping
+
+
+def performThresholding(mag):
+    retMag = 0
+    if 0 <= mag <= 0.15:
+        retMag = retMag
+    elif 0.2 <= mag <= 0.3:
+        retMag = 1
+    elif 0.4 <= mag <= 0.6:
+        retMag = 2
+    elif 0.65 < mag <= 0.8:
+        retMag = 3
+    elif 0.9 <= mag <= 1.15:
+        retMag = 4
+    elif 1.2 <= mag <= 1.35:
+        retMag = 5
+    elif 1.4 <= mag <= 1.6:
+        retMag = 6
+    elif 1.65 < mag <= 1.8:
+        retMag = 7
+    elif 1.9 < mag <= 2.1:
+        retMag = 8
+    elif 2.15 <= mag <= 2.35:
+        retMag = 9
+
+    # print(retMag, ' ', end =" ")
+    return retMag
+
+
+def getSubcarriersCompositeSignal(subcarriesrBits, subcarrierFFTIndexMapping):
+    # subcarriesrBit = fftResult[list(subcarrierFFTIndexMapping.keys())]
+    subcarriersCompositeSignal = {}
+
+    for i in range(len(subcarriesrBits)):
+        for index, bit in enumerate(subcarriesrBits[i]):
+            subCarrierFreq = list(subcarrierFFTIndexMapping.keys())[index]
+            subcarrierCompositeBits = subcarriersCompositeSignal.get(subCarrierFreq)
+            mag = performThresholding(bit)
+            if subcarrierCompositeBits is None:
+                subcarrierCompositeBits = [mag]
+            else:
+                subcarrierCompositeBits.append(mag)
+            subcarriersCompositeSignal[subCarrierFreq] = subcarrierCompositeBits
+
+    return subcarriersCompositeSignal
+
+
+def getSystemAccuracy(numberOfSubcarriers, numberOfNodes, subCarrierBinary40ByteDataList,
+                      goldCodes, goldCodesSet2 , subcarriersCompositeSignal, carrierFrequencyList):
+    for i in range(numberOfSubcarriers):
+        goldCodeList = []
+        if i % 2 == 0:
+            goldCodeList = goldCodes
+        else:
+            goldCodeList = goldCodesSet2
+
+        goldCodeList = goldCodeList[0: numberOfNodes]
+
+        # print('code again: ', goldCodeList[0])
+
+        print('Accuracy for subcarrier: ', i + 1)
+        snowAccuracy.evaluatePerformance(subCarrierBinary40ByteDataList[i], goldCodeList, subcarriersCompositeSignal,
+                                         str(carrierFrequencyList[i]))
